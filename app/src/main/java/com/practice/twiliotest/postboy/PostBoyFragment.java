@@ -54,6 +54,7 @@ public class PostBoyFragment extends Fragment{
             @Override
             public void run() {
                 ResponseData rd = getJsonFromInternet();
+                connectionInProgress = false;
                 if (rd!=null)
                 {
                     _connectedAsync(rd.getString(),rd.getCode());
