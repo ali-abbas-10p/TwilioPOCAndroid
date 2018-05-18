@@ -1,12 +1,21 @@
 package com.practice.twiliotest.activities;
 
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.practice.twiliotest.R;
+import com.practice.twiliotest.commons.CommonConstants;
+import com.practice.twiliotest.postboy.PostBoy;
+import com.practice.twiliotest.postboy.PostBoyException;
+import com.practice.twiliotest.postboy.PostBoyListener;
+import com.practice.twiliotest.postboy.RequestType;
+import com.practice.twiliotest.web.WebConstants;
+import com.practice.twiliotest.web.parsers.Parser;
 import com.twilio.video.CameraCapturer;
 import com.twilio.video.ConnectOptions;
 import com.twilio.video.EncodingParameters;
@@ -25,6 +34,7 @@ import com.twilio.video.TwilioException;
 import com.twilio.video.Video;
 import com.twilio.video.VideoView;
 
+import java.util.Calendar;
 import java.util.Collections;
 
 public class VideoCallActivity extends AppCompatActivity {
@@ -68,7 +78,59 @@ public class VideoCallActivity extends AppCompatActivity {
         audioManager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
         audioManager.setSpeakerphoneOn(true);
         createAudioAndVideoTracks();
-        connectToRoom();
+        getToken();
+    }
+
+
+    private void getToken() {
+        PostBoy pb = new PostBoy.Builder(null, RequestType.POST_X_WWW_FORM_URLENCODED, WebConstants.BASE_URL+WebConstants.METHOD_AUTHENTICATE).create();
+        pb.addPOSTValue("identity", String.valueOf(Calendar.getInstance().getTimeInMillis()));
+        pb.setListener(new PostBoyListener() {
+            private ProgressDialog pd;
+            @Override
+            public void onPostBoyConnecting() throws PostBoyException {
+                pd = new ProgressDialog(VideoCallActivity.this);
+                pd.setCancelable(false);
+                pd.setCanceledOnTouchOutside(false);
+                pd.setMessage("Getting Token...");
+                pd.show();
+            }
+
+            @Override
+            public void onPostBoyAsyncConnected(String json, int responseCode) throws PostBoyException {
+            }
+
+            @Override
+            public void onPostBoyConnected(String json, int responseCode) throws PostBoyException {
+                if (pd!=null)
+                    pd.dismiss();
+                Parser parser = Parser.create(json);
+                if (parser.getMetaData().getStatusCode()==200)
+                {
+                    accessToken = parser.getData().getAsJsonObject().get("token").getAsString();
+                    connectToRoom();
+                }
+                else
+                {
+                    Toast.makeText(VideoCallActivity.this, parser.getMetaData().getMessage(), Toast.LENGTH_SHORT).show();
+                    onBackPressed();
+                }
+            }
+
+            @Override
+            public void onPostBoyConnectionFailure() throws PostBoyException {
+                if (pd!=null)
+                    pd.dismiss();
+                Toast.makeText(VideoCallActivity.this, "Internet connection fail", Toast.LENGTH_SHORT).show();
+                onBackPressed();
+            }
+
+            @Override
+            public void onPostBoyError(PostBoyException e) {
+                Toast.makeText(VideoCallActivity.this, e.toString(), Toast.LENGTH_SHORT).show();
+            }
+        });
+        pb.call();
     }
 
 
@@ -83,7 +145,7 @@ public class VideoCallActivity extends AppCompatActivity {
 
     private void connectToRoom() {
         ConnectOptions connectOptions = new ConnectOptions.Builder(accessToken)
-                .roomName("abc")
+                .roomName(this.getIntent().getStringExtra(CommonConstants.ROOM_NAME))
                 .audioTracks(Collections.singletonList(localAudioTrack))
                 .videoTracks(Collections.singletonList(localVideoTrack))
                 .build();
